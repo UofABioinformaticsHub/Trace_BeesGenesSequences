@@ -20,7 +20,7 @@ merge2("beewgFor","W158F","beewgFor_W158F",170,180,5,18,TRUE)
 for (i in 1:4){
   frags <- strsplit(fragName[i],"_")[[1]]
   gene <- genes[i]
-  dna <- readDNAStringSet(merge_dir,fragName[i],".fasta"))
+  dna <- readDNAStringSet(paste0(merge_dir,fragName[i],".fasta"))
   for (j in 1:length(dna)){
     seq <- dna[j]
     name <- names(seq)
