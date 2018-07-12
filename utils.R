@@ -1,18 +1,19 @@
 library(dplyr)
 library(Biostrings)
 library(magrittr)
+#The Gene fragment names used in the manuscript are renamed here as; "CO15_1"= "M414F", "CO15_2" = "M84F", "CO13_1" = "M202F", "CO13_2" = "M702F", "CO13_3" = "M82F", "EF_1" = "G0605F", "EF_2" = "E393F", "EF_3" = "E577F", "EF_4" = "E783F", "WNT_1" = "beewgFor", "WNT_2" = "W158F"
 
-#define some parameters
+#define parameters
 fragments <- c("M414F","M84F","M202F","M702F","M82F","G0605F","E393F","E577F","E783F","beewgFor","W158F")
 genes <- c("CO15","CO13","EF","WNT")
 fragNames <- c("M414F_M84F","M202F_M702F_M82F","G0605F_E393F_E577F_E783F","beewgFor_W158F")
 
-#define some directories
-count_dir <- "AGRF_CAGRF15854_B6B68_Xloose_readCounts/"
-cluster_dir <- "AGRF_CAGRF15854_B6B68_Xloose_readClusters/"
-merge_dir <- "AGRF_CAGRF15854_B6B68_Xloose_mergedReads/"
-sampleSpecificRef_dir <- "AGRF_CAGRF15854_B6B68_Xloose_sampleSpecificRef/"
-sampleSpecificRef_checkReplicates_dir <- "AGRF_CAGRF15854_B6B68_Xloose_sampleSpecificRef_checkReplicates/"
+#define directories
+count_dir <- "AGRF_CAGRF15854_B6B68_MergedReads_xloose_readCounts/"
+cluster_dir <- "AGRF_CAGRF15854_B6B68_MergedReads_xloose_readClusters/"
+merge_dir <- "AGRF_CAGRF15854_B6B68_MergedReads_xloose_mergedReads/"
+sampleSpecificRef_dir <- "AGRF_CAGRF15854_B6B68_MergedReads_xloose_sampleSpecificRef/"
+sampleSpecificRef_checkReplicates_dir <- "AGRF_CAGRF15854_B6B68_AGRF_MergedReads_xloose_sampleSpecificRef_checkReplicates/"
 
 system(paste0("mkdir -p ",count_dir))
 system(paste0("mkdir -p ",cluster_dir))
@@ -35,7 +36,7 @@ distance <- function(s1,s2){
   sum(s=="?")
 }
 
-#function to check if s1 and s2 is overlapped or not
+#function checks if s1 and s2 overlap
 #minOver the minimum overlap region length
 #maxOver the maximum overlap region length
 #thershold the maximum number of allowed mismatches in the overlap region
@@ -98,15 +99,15 @@ clustering <- function(seqs,counts,threshold){
   else return(list("Sequence"=seqs,"Count"=counts))
 }
 
-#function that merges the sequences coming from the same samples but 2 different neighbor gene fragment
-#namein1 the base of the first gene fragment file name
-#namein2 the base of the second gene fragment file name
-#nameout the base name of the output file
-#minOver the minimum overlap region length
-#maxOver the maximum overlap region length
-#threshold the allowed mismatches in the overlap region
-#maxThreshold the maximum allowed mismatches in the overlap region
-#Final a logical parameter indicating if we attain the the last gene fragment or not
+#function that merges sequences of overlapping gene fragments from the same sample 
+#namein1: the base of the first gene fragment file name
+#namein2: the base of the second gene fragment file name
+#nameout: the base name of the output file
+#minOver: the minimum overlap region length
+#maxOver: the maximum overlap region length
+#threshold: the allowed mismatches in the overlap region
+#maxThreshold: the maximum allowed mismatches in the overlap region
+#Final: a logical parameter indicating whether the the last gene fragment of the gene has been merged or not
 merge2 <- function(namein1,namein2,nameout,minOver,maxOver,threshold,maxThreshold,Final){
   #read the first gene fragment file
   sequences1 <- readDNAStringSet(paste0(merge_dir,namein1,".fasta"))
@@ -114,9 +115,8 @@ merge2 <- function(namein1,namein2,nameout,minOver,maxOver,threshold,maxThreshol
   ss <- strsplit(names1,":")
   ss <- sapply(ss, function(s){s[length(s)]})
   ss <- strsplit(ss,"_")
-  species1 <- sapply(ss,function(i){i[2]})
-  samples1 <- sapply(ss,function(i){i[3]})
-  nbReads1 <- as.integer(sapply(ss,function(i){i[4]}))
+  samples1 <- sapply(ss,function(i){i[2]})
+  nbReads1 <- as.integer(sapply(ss,function(i){i[3]}))
   
   #read the second gene fragment file
   sequences2 <- readDNAStringSet(paste0(merge_dir,namein2,".fasta"))
@@ -124,11 +124,10 @@ merge2 <- function(namein1,namein2,nameout,minOver,maxOver,threshold,maxThreshol
   ss <- strsplit(names2,":")
   ss <- sapply(ss, function(s){s[length(s)]})
   ss <- strsplit(ss,"_")
-  species2 <- sapply(ss,function(i){i[2]})
-  samples2 <- sapply(ss,function(i){i[3]})
-  nbReads2 <- as.integer(sapply(ss,function(i){i[4]}))
+  samples2 <- sapply(ss,function(i){i[2]})
+  nbReads2 <- as.integer(sapply(ss,function(i){i[3]}))
   
-  #refer all available samples
+  #refer to all samples
   allSamples <- unique(c(samples1,samples2))
   
   #merge sequences for each sample
@@ -156,9 +155,9 @@ merge2 <- function(namein1,namein2,nameout,minOver,maxOver,threshold,maxThreshol
       
       if(sum(isV)==0){#if not every sequence of the first fragment that overlaps with any sequence of the second fragment, then take either one fragment and consider the other fragment is missing
         r1 <- DNAStringSet(s1)
-        names(r1) <- paste0(names(s1),":",namein2,"_",species2[id2[1]],"_",samples2[id2[1]],"_0")
+        names(r1) <- paste0(names(s1),":",namein2,"_",samples2[id2[1]],"_0")
         r2 <- DNAStringSet(s2)
-        names(r2) <- paste0(namein1,"_",species1[id1[1]],"_",samples1[id1[1]],"_0",":",names(s2))
+        names(r2) <- paste0(namein1,"_",samples1[id1[1]],"_0",":",names(s2))
         mergedSeq <- DNAStringSet(c(r1,r2))
       }else{#if there exists overlaped sequences, then merge the overlap sequences and removed the ones that do not overlap to any other
         k1 <- rowSums(isV)
@@ -178,12 +177,12 @@ merge2 <- function(namein1,namein2,nameout,minOver,maxOver,threshold,maxThreshol
       }
     } else if (length(s2)==0) {#missing sample s in second fragment
       mergedSeq <- DNAStringSet(s1)
-      names(mergedSeq) <- paste0(names(s1),":",namein2,"_",species1[id1],"_",samples1[id1],"_0")
+      names(mergedSeq) <- paste0(names(s1),":",namein2,"_",samples1[id1],"_0")
     } else if (length(s1)==0) {#missing sample s in first fragment
       mergedSeq <- DNAStringSet(s2)
-      names(mergedSeq) <- paste0(namein1,"_",species2[id2],"_",samples2[id2],"_0",":",names(s2))
+      names(mergedSeq) <- paste0(namein1,"_",samples2[id2],"_0",":",names(s2))
     }
-    if (Final){#attain to the last fragment of the gene
+    if (Final){#the last fragment of the gene has been merged
       #rename and extract number of reads
       nameSeq <- names(mergedSeq)
       nb <- list()
@@ -191,25 +190,24 @@ merge2 <- function(namein1,namein2,nameout,minOver,maxOver,threshold,maxThreshol
         f1 <- strsplit(nameSeq[k],":")[[1]]
         ss1 <- strsplit(f1,"_")
         n1 <- as.integer(sapply(ss1,function(s){s[length(s)]}))
-        nb[[k]] <- n1
-        sp <- sapply(ss1,function(s){s[2]})[1]        
-        names(mergedSeq)[k] <- paste0(sp,"_",s,"_",paste0(n1,collapse = "_"))  
+        nb[[k]] <- n1     
+        names(mergedSeq)[k] <- paste0(s,"_",paste0(n1,collapse = "_"))  
       }
       nbFrag <- length(nb[[1]])      
       
-      #clustering again the merged sequences
+      #cluster the merged sequences
       clusterMergedSeq <- clustering(mergedSeq,nb,0.02)
       mergedSeq <- clusterMergedSeq$Sequence
       nb <- clusterMergedSeq$Count
       
-      #take the maximal merged sequence (in term of number of reads) 
+      #take the merged sequence with the highest number of reads  
       toRemove <- sapply(1:length(nb),function(i){
         any(sapply((1:length(nb))[-i],function(j){
           all(nb[[i]] <= nb[[j]]) || (nbFrag==3 && nb[[i]][3]==nb[[j]][3] && nb[[i]][2]==0)
         }))
       })
       
-      #remove the low coverage sequences which does not overlap with any of its neighbor 
+      #remove low coverage sequences which fail to overlap  
       toKeep <- rep(TRUE,length(mergedSeq))  
       for (k in 1:length(mergedSeq)){
         if (nb[[k]][1]<10 && nb[[k]][2]==0) nb[[k]][1] <- 0
@@ -230,16 +228,16 @@ merge2 <- function(namein1,namein2,nameout,minOver,maxOver,threshold,maxThreshol
 }
 
 
-#function that merges the sequences coming from the same samples but 2 different neighbor gene fragment and check the consistency of replicates to infer appropriate reference
-#toCheckSpecies the species to check
-#namein1 the base of the first gene fragment file name
-#namein2 the base of the second gene fragment file name
-#nameout the base name of the output file
-#minOver the minimum overlap region length
-#maxOver the maximum overlap region length
-#threshold the allowed mismatches in the overlap region
-#maxThreshold the maximum allowed mismatches in the overlap region
-#Final a logical parameter indicating if we attain the the last gene fragment or not
+#function that merges sequences of overlapping gene fragments coming from the same samples and checks that the merged sequence is present in all replicates of the sample
+#toCheckSpecies: the species to check
+#namein1: the base of the first gene fragment file name
+#namein2: the base of the second gene fragment file name
+#nameout: the base name of the output file
+#minOver: the minimum overlap region length
+#maxOver: the maximum overlap region length
+#threshold: the allowed mismatches in the overlap region
+#maxThreshold: the maximum allowed mismatches in the overlap region
+#Final: a logical parameter indicating whether the the last gene fragment of the gene has been merged or not
 merge3 <- function(toCheckSpecies,namein1,namein2,nameout,minOver,maxOver,threshold,maxThreshold,Final){
   #load the first fragment sequences
   sequences1 <- readDNAStringSet(paste0(merge_dir,namein1,"_",toCheckSpecies,".fasta"))
@@ -247,8 +245,8 @@ merge3 <- function(toCheckSpecies,namein1,namein2,nameout,minOver,maxOver,thresh
   ss <- strsplit(names1,":")
   ss <- sapply(ss, function(s){s[length(s)]})
   ss <- strsplit(ss,"_")
-  samples1 <- sapply(ss,function(i){i[3]})
-  nbReads1 <- as.integer(sapply(ss,function(i){i[4]}))
+  samples1 <- sapply(ss,function(i){i[2]})
+  nbReads1 <- as.integer(sapply(ss,function(i){i[3]}))
   
   #load the second fragment sequences
   sequences2 <- readDNAStringSet(paste0(merge_dir,namein2,"_",toCheckSpecies,".fasta"))
@@ -256,11 +254,10 @@ merge3 <- function(toCheckSpecies,namein1,namein2,nameout,minOver,maxOver,thresh
   ss <- strsplit(names2,":")
   ss <- sapply(ss, function(s){s[length(s)]})
   ss <- strsplit(ss,"_")
-  samples2 <- sapply(ss,function(i){i[3]})
-  nbReads2 <- as.integer(sapply(ss,function(i){i[4]}))
+  samples2 <- sapply(ss,function(i){i[2]})
+  nbReads2 <- as.integer(sapply(ss,function(i){i[3]}))
   
-  #infer all available samples
-  allSamples <- unique(c(samples1,samples2))
+ 
   #the samples belong to the species to Check
   toCheckSamples <- unique(c(samples1,samples2))
   
@@ -289,9 +286,9 @@ merge3 <- function(toCheckSpecies,namein1,namein2,nameout,minOver,maxOver,thresh
       k2 <- colSums(isV)
       if(sum(isV)==0){
         r1 <- DNAStringSet(s1)
-        names(r1) <- paste0(names(s1),":",namein2,"_",toCheckSpecies,"_",samples2[id2[1]],"_0")
+        names(r1) <- paste0(names(s1),":",namein2,"_",samples2[id2[1]],"_0")
         r2 <- DNAStringSet(s2)
-        names(r2) <- paste0(namein1,"_",toCheckSpecies,"_",samples1[id1[1]],"_0",":",names(s2))
+        names(r2) <- paste0(namein1,"_",samples1[id1[1]],"_0",":",names(s2))
         mergedSeq <- DNAStringSet(c(r1,r2))
       }else{
         x1 <- which(k1>0)
@@ -309,10 +306,10 @@ merge3 <- function(toCheckSpecies,namein1,namein2,nameout,minOver,maxOver,thresh
       }
     } else if (length(s2)==0) {
       mergedSeq <- DNAStringSet(s1)
-      names(mergedSeq) <- paste0(names(s1),":",namein2,"_",toCheckSpecies,"_",samples1[id1],"_0")
+      names(mergedSeq) <- paste0(names(s1),":",namein2,"_",samples1[id1],"_0")
     } else if (length(s1)==0) {
       mergedSeq <- DNAStringSet(s2)
-      names(mergedSeq) <- paste0(namein1,"_",toCheckSpecies,"_",samples2[id2],"_0",":",names(s2))
+      names(mergedSeq) <- paste0(namein1,"_",samples2[id2],"_0",":",names(s2))
     }
     if (Final){
       #rename the merged sequences
@@ -322,20 +319,23 @@ merge3 <- function(toCheckSpecies,namein1,namein2,nameout,minOver,maxOver,thresh
         f1 <- strsplit(nameSeq[k],":")[[1]]
         ss1 <- strsplit(f1,"_")
         n1 <- as.integer(sapply(ss1,function(s){s[length(s)]}))
-        names(mergedSeq)[k] <- paste0(toCheckSpecies,"_",s,"_",paste0(n1,collapse = "_"))  
+        names(mergedSeq)[k] <- paste0(s,"_",paste0(n1,collapse = "_"))  
       }
     }
     mergedSeq
   }) %>% DNAStringSetList() %>% unlist()
   if (Final){
     ss <- strsplit(names(allMergedSeq),"_")
-    samples <- sapply(ss,function(s){s[2]})
-    nbR <- lapply(ss,function(s){as.integer(s[3:length(s)])}) 
+    samples <- sapply(ss,function(s){s[1]})
+    nbR <- lapply(ss,function(s){as.integer(s[2:length(s)])}) 
     nbR <- do.call(rbind,nbR) %>% as.data.frame() 
     nbR <- mutate(nbR,TotalNbReads=rowSums(nbR))    
     
-    #build a data frame contains information of each sequence to check 
-    toCheck <- mutate(nbR,"Id"=1:nrow(nbR),"IdC"=1:nrow(nbR),"Sequence"=as.character(allMergedSeq),"Sample"=samples,"SampleInGroup"=samples,"Count"=TotalNbReads) %>% arrange(desc(Count))
+    #build a data frame: contains information of each sequence to check
+    toCheck <- mutate(nbR,"Id"=1:nrow(nbR),"IdC"=1:nrow(nbR),
+                      "Sequence"=as.character(allMergedSeq),"Sample"=samples,
+                      "SampleInGroup"=samples,"Count"=TotalNbReads) %>% 
+                arrange(desc(Count))
     
     #cluster all merged sequences among all samples of the species
     check <- rep(0,nrow(toCheck))
@@ -359,13 +359,16 @@ merge3 <- function(toCheckSpecies,namein1,namein2,nameout,minOver,maxOver,thresh
     
     clusterOfSpecies <- toCheck[check==1,] 
     
-    #calculate number of samples that support each sequence, and arrange by this number, followed by the number of Count
-    clusterOfSpecies <- mutate(clusterOfSpecies,"NbSupportedSamples" = sapply(strsplit(SampleInGroup,","),function(s){length(unique(s))})) %>% 
+    #calculate number of samples that support each sequence and sort the sequences by number of supporting replicates and then by read counts
+    clusterOfSpecies <- mutate(clusterOfSpecies,
+              "NbSupportedSamples" = sapply(strsplit(SampleInGroup,","),
+                                            function(s){length(unique(s))})) %>% 
                         arrange(desc(NbSupportedSamples),desc(Count)) %>% 
                         mutate("Order" = 1:nrow(clusterOfSpecies)) %>% 
                         select(IdC,Count,NbSupportedSamples,Order)
     
-    toCheck <- full_join(toCheck,clusterOfSpecies,by="IdC") %>% select(Sample,IdC,Id,NbSupportedSamples,Order,TotalNbReads)
+    toCheck <- full_join(toCheck,clusterOfSpecies,by="IdC") %>% 
+      select(Sample,IdC,Id,NbSupportedSamples,Order,TotalNbReads)
     
     #select the reference sequence for each sample
     selectRef <- sapply(toCheckSamples,function(s){

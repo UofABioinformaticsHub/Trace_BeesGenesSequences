@@ -2,23 +2,23 @@
 #SBATCH -p batch                                        # partition (this is the queue your job will be added to)
 #SBATCH -N 1                                               # number of nodes
 #SBATCH -n 8                                               # number of cores                                          
-#SBATCH --time=1:00:00
+#SBATCH --time=2:00:00
 #SBATCH --mem=4GB
 
+#This script maps raw reads to reference sequences and retains only those reads that are 84% similar to the reference sequence  
 module purge
 module load HISAT2/2.1.0-foss-2016b
 module load SAMtools/1.3.1-GCC-5.3.0-binutils-2.25
 
-#SET UP
+#Set up
 GENE=$1  ## ex: CO13
-REF_DIR=AGRF_CAGRF15854_B6B68_Reference_fragments  ## reference folder, contains the reference of each gene (from Sanger sequencing)
-INPUT_DIR=AGRF_CAGRF15854_B6B68_Xloose_fragments   ## input folder contains fastq files e.g. L.willsi_TA324_M84F.fastq.gz
-ALIGNMENT_DIR=AGRF_CAGRF15854_B6B68_Xloose_alignments  ## folder contains alignments bam file
-COUNT_DIR=AGRF_CAGRF15854_B6B68_Xloose_readCounts ## folder contains the read count files
+REF_DIR=AGRF_CAGRF15854_B6B68_Reference_fragments  ## reference folder
+INPUT_DIR=AGRF_CAGRF15854_B6B68_MergedXlooseCutadaptDemultiplexed   ## input folder contains fastq files
+ALIGNMENT_DIR=AGRF_CAGRF15854_B6B68_Merged_Genefragment_trimmed_alignments_fragments  ## folder contains alignments
+COUNT_DIR=AGRF_CAGRF15854_B6B68_MergedReads_xloose_readCounts ##Folder contains read counts for each sample and gene fragment
 mkdir -p ${ALIGNMENT_DIR}
-mkdir -p ${COUNT_DIR}
 
-#BUILD THE INDEX OF REFERENCE   
+#Build indexes for the reference sequences   
 if [ -e ${REF_DIR}/${GENE}.snp ]
 then hisat2-build ${REF_DIR}/${GENE}.fasta ${REF_DIR}/${GENE} --snp ${REF_DIR}/${GENE}.snp
 else hisat2-build ${REF_DIR}/${GENE}.fasta ${REF_DIR}/${GENE}
@@ -26,41 +26,32 @@ fi
 
 if [ ${GENE} == "CO13" ]
 then
-    ALLFRAGS="M202F M702F M82F"
+    FRAG="M202F M702F M82F"
 fi
 if [ ${GENE} == "CO15" ]
 then
-    ALLFRAGS="M414F M84F"
+    FRAG="M414F M84F"
 fi
 if [ ${GENE} == "EF" ]
 then
-    ALLFRAGS="G0605F E393F E577F E783F"
+    FRAG="G0605F E393F E577F E783F"
 fi
 if [ ${GENE} == "WNT" ]
 then
-    ALLFRAGS="beewgFor W158F"
+    FRAG="beewgFor W158F"
 fi
 
-#Define all available species
-ALLSPECIES=$((ls ${INPUT_DIR}/*_*_E577F.fastq.gz) | sed -r "s#${INPUT_DIR}\/##g" | sed -r "s#_.+_E577F.fastq.gz##g" | sort | uniq)
-
-for FRAG in ${ALLFRAGS}; do
-  rm -f ${COUNT_DIR}/${FRAG}.txt
-  rm -f ${COUNT_DIR}/${FRAG}.nb
-  for SPECIES in ${ALLSPECIES}; do
-      SAMPLES=$(ls ${INPUT_DIR}/${SPECIES}_*_${FRAG}.fastq.gz)
-      rm  -f ${COUNT_DIR}/${SPECIES}_${FRAG}.txt
-      rm -f ${COUNT_DIR}/${SPECIES}_${FRAG}.nb
-      for SAMPLE in ${SAMPLES}; do
-      #MAP THE RAW READS OF EACH FRAGMENT TO REFERENCE
-	      SAMPLE=$(basename $SAMPLE)     
-	      SAMPLE=${SAMPLE%.fastq.gz}
-	      hisat2 -x ${REF_DIR}/${GENE} -U ${INPUT_DIR}/${SAMPLE}.fastq.gz --sp 6,2 --score-min L,0,-1  --no-spliced-alignment --ignore-quals  2> ${ALIGNMENT_DIR}/${SAMPLE}.log | samtools view -Sbh - > ${ALIGNMENT_DIR}/${SAMPLE}.bam
-	      samtools view -F 260 ${ALIGNMENT_DIR}/${SAMPLE}.bam | cut -f 10 | awk '{if ((length($1) > 250)) print;}'| sort | uniq -c | sort -nr | sed -r 's#^ +##g' | sed -r 's#\t# #g' > ${COUNT_DIR}/${SAMPLE}.txt 
-	      cat ${COUNT_DIR}/${SAMPLE}.txt >> ${COUNT_DIR}/${SPECIES}_${FRAG}.txt
-	      wc -l ${COUNT_DIR}/${SAMPLE}.txt >> ${COUNT_DIR}/${SPECIES}_${FRAG}.nb
-      done
-      cat ${COUNT_DIR}/${SPECIES}_${FRAG}.txt >> ${COUNT_DIR}/${FRAG}.txt
-          wc -l ${COUNT_DIR}/${SPECIES}_${FRAG}.txt >> ${COUNT_DIR}/${FRAG}.nb
-    done
+for f in ${FRAG}; do
+  rm -f ${COUNT_DIR}/${f}.txt
+  rm -f ${COUNT_DIR}/${f}.nb
+  for FILE in ${INPUT_DIR}/*_B6B68_*-*-${f}.fastq.gz; do
+  #Map the raw reads of each fragment to the reference sequences and count number of reads passing filter
+      R=$(basename $FILE)     
+      R=${R%.fastq.gz}
+      hisat2 -x ${REF_DIR}/${GENE} -U ${INPUT_DIR}/${R}.fastq.gz --sp 6,2 --score-min L,0,-1  --no-spliced-alignment --ignore-quals  2> ${ALIGNMENT_DIR}/${R}.log | samtools view -Sbh - > ${ALIGNMENT_DIR}/${R}.bam
+      samtools view -F 260 ${ALIGNMENT_DIR}/${R}.bam | cut -f 10 | awk '{if ((length($1) > 250)) print;}'| sort | uniq -c | sort -nr | sed -r 's#^ +##g' | sed -r 's#\t# #g' > ${COUNT_DIR}/${R}.txt 
+      echo ${R} ${f}
+      cat ${COUNT_DIR}/${R}.txt >> ${COUNT_DIR}/${f}.txt
+      wc -l ${COUNT_DIR}/${R}.txt >> ${COUNT_DIR}/${f}.nb
+   done
 done

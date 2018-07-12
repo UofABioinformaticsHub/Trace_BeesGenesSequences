@@ -5,72 +5,81 @@
 #SBATCH --time=2:00:00
 #SBATCH --mem=4GB
 
+
+#This script maps raw reads to their sample specific reference sequnces and generates consesus sequences for each sample and gene
+#The Gene fragment names used in the manuscript are renamed here as; "CO15_1"= "M414F", "CO15_2" = "M84F", "CO13_1" = "M202F", "CO13_2" = "M702F", "CO13_3" = "M82F", "EF_1" = "G0605F", "EF_2" = "E393F", "EF_3" = "E577F", "EF_4" = "E783F", "WNT_1" = "beewgFor", "WNT_2" = "W158F"
+
 module purge
+module load R/3.4.4-foss-2016b
 module load HISAT2/2.1.0-foss-2016b
 module load seqtk/1.2-foss-2017a
 module load SAMtools/1.3.1-GCC-5.3.0-binutils-2.25
 module load BCFtools/1.3.1-GCC-5.3.0-binutils-2.25
 
-INPUT_FIR="AGRF_CAGRF15854_B6B68_Xloose_fragments"
-REF_DIR="AGRF_CAGRF15854_B6B68_Xloose_sampleSpecificRef"
-ALIGNMENT_DIR="AGRF_CAGRF15854_B6B68_Xloose_alignments_sampleSpecificRef"
-CONSENSUS_DIR="AGRF_CAGRF15854_B6B68_Xloose_Consensus"
 
-mkdir -p ${ALIGNMENT_DIR}
+input_dir="AGRF_CAGRF15854_B6B68_MergedXlooseCutadaptDemultiplexed"## input folder contains raw data fastq files  
+alignment_dir="AGRF_CAGRF15854_B6B68_Merged_Genefragment_trimmed_alignments_sampleSpecificRef"## Folder contains alignments to sample specifc reference sequences
+ref_dir="AGRF_CAGRF15854_B6B68_MergedReads_xloose_sampleSpecificRef"##Folder contains reference sequences for individual samples
+CONSENSUS_DIR="AGRF_CAGRF15854_B6B68_Merged_Genefragment_trimmed_consensus_sampleSpecificRef"# Folder contains assembled consesus sequences for each sample
+mkdir -p ${alignment_dir}
 mkdir -p ${CONSENSUS_DIR}
-GENE=$1
-if [ ${GENE} == "CO13" ]
+gene=$1
+if [ ${gene} == "CO13" ]
 then
-    ALLFRAGS="M202F M702F M82F"
+    FRAG="M202F M702F M82F"
 fi
-if [ ${GENE} == "CO15" ]
+if [ ${gene} == "CO15" ]
 then
-    ALLFRAGS="M414F M84F"
+    FRAG="M414F M84F"
 fi
-if [ ${GENE} == "EF" ]
+if [ ${gene} == "EF" ]
 then
-    ALLFRAGS="G0605F E393F E577F E783F"
+    FRAG="G0605F E393F E577F E783F"
 fi
-if [ ${GENE} == "WNT" ]
+if [ ${gene} == "WNT" ]
 then
-    ALLFRAGS="beewgFor W158F"
+    FRAG="beewgFor W158F"
 fi
 
-rm ${CONSENSUS_DIR}/${GENE}_consensus.fastq
-for FILENAME in $(ls ${REF_DIR}/${GENE}_*TA*.fasta); do
-    NAME=$(basename $FILENAME)
-    NAME=${NAME%.fasta}
-    SPECIES=$(echo $NAME | cut -f 2 -d "_")
-    SAMPLE=$(echo $NAME | cut -f 3 -d "_")
-    
-    #build index for the sample specific reference
-    if [ -e ${REF_DIR}/${NAME}.snp ]
-      then hisat2-build ${REF_DIR}/${NAME}.fasta ${REF_DIR}/${NAME} --snp ${REF_DIR}/${NAME}.snp
-      else hisat2-build ${REF_DIR}/${NAME}.fasta ${REF_DIR}/${NAME}
+
+rm ${CONSENSUS_DIR}/${gene}_consensus.fastq
+for name in $(ls ${ref_dir}/${gene}_*TA*.fasta); do
+    n=$(basename $name)
+    n=${n%.fasta}
+    sa=$(echo $n | cut -f 2 -d "_")
+
+    #build the hisat2 index for the reference sequence
+    if [ -e ${ref_dir}/${n}.snp ]
+    then hisat2-build ${ref_dir}/${n}.fasta ${ref_dir}/${n} --snp ${ref_dir}/${n}.snp
+    else hisat2-build ${ref_dir}/${n}.fasta ${ref_dir}/${n}
     fi
+    
+    #map the reads of each gene fragment to the reference
     FRAG_BAMFILE=""
-    
-    #map the raw reads to the sample specific reference for each gene fragment
-    for FRAG in ${ALLFRAGS}; do
-	    hisat2 -x ${REF_DIR}/${NAME} -U ${INPUT_FIR}/${SPECIES}_${SAMPLE}_${FRAG}.fastq.gz --no-spliced-alignment --ignore-quals --no-softclip  2> ${ALIGNMENT_DIR}/${NAME}_${FRAG}.log | samtools view -Sbh - | samtools sort > ${ALIGNMENT_DIR}/${NAME}_${FRAG}.bam
-	    samtools index ${ALIGNMENT_DIR}/${NAME}_${FRAG}.bam
-	    FRAG_BAMFILE=$(echo ${FRAG_BAMFILE} "${ALIGNMENT_DIR}/${NAME}_${FRAG}.bam")
+    for f in ${FRAG}; do
+	hisat2 -x ${ref_dir}/${n} -U ${input_dir}/${sa}_B6B68_*-*-${f}.fastq.gz --no-spliced-alignment --ignore-quals --no-softclip  2> ${alignment_dir}/${n}_${f}.log | samtools view -Sbh - | samtools sort > ${alignment_dir}/${n}_${f}.bam
+	samtools index ${alignment_dir}/${n}_${f}.bam
+	FRAG_BAMFILE=$(echo ${FRAG_BAMFILE} "${alignment_dir}/${n}_${f}.bam")
     done
-    #merge the alignments of all gene fragment into one file
-    samtools merge -f ${ALIGNMENT_DIR}/${NAME}.bam ${FRAG_BAMFILE}
-    samtools index ${ALIGNMENT_DIR}/${NAME}.bam
-    
-    #build the consensus sequence from the alignment
-    samtools mpileup -B -d 100000 -u ${ALIGNMENT_DIR}/${NAME}.bam | bcftools call -c -M > ${CONSENSUS_DIR}/${NAME}.bcf
-    samtools mpileup -B -d 100000  ${ALIGNMENT_DIR}/${NAME}.bam > ${CONSENSUS_DIR}/${NAME}.coverage 
-    vcfutils.pl vcf2fq ${CONSENSUS_DIR}/${NAME}.bcf > ${CONSENSUS_DIR}/${NAME}_consensus.fastq
-    nb=$(wc -l ${CONSENSUS_DIR}/${NAME}_consensus.fastq | cut -f1 -d " ")
+    #merge the alignments of all gene fragments into one file
+    samtools merge -f ${alignment_dir}/${n}.bam ${FRAG_BAMFILE}
+    samtools index ${alignment_dir}/${n}.bam
+
+    #generate the consensus sequence from the merged alignments
+    samtools mpileup -B -d 100000 -u ${alignment_dir}/${n}.bam | bcftools call -c -M | vcfutils.pl vcf2fq - > ${CONSENSUS_DIR}/${n}_consensus.fastq
+    nb=$(wc -l ${CONSENSUS_DIR}/${n}_consensus.fastq | cut -f1 -d " ")
     if [ $nb -ne 2 ] 
     then 
-	     cat ${CONSENSUS_DIR}/${NAME}_consensus.fastq >> ${CONSENSUS_DIR}/${GENE}_consensus.fastq #append consensus sequence of all samples into one file
+	cat ${CONSENSUS_DIR}/${n}_consensus.fastq >> ${CONSENSUS_DIR}/${gene}_consensus.fastq
     fi
 done
 
-seqtk seq -a ${CONSENSUS_DIR}/${GENE}_consensus.fastq > ${CONSENSUS_DIR}/${GENE}_consensus.fasta #convert fastq to fasta file
+#convert the fastq consensus sequence file into fasta file
+seqtk seq -a ${CONSENSUS_DIR}/${gene}_consensus.fastq > ${CONSENSUS_DIR}/${gene}_consensus.fasta 
 
+# Rename: add species names into consensus sequence names
+# The species name is defined in the file 'Species.txt' 
 
+sed -r "s#gene <-#gene <- \"${gene}\"#g" addSpeciesToConsensusName.R > addSpeciesToConsensusName_${gene}.R
+R < addSpeciesToConsensusName_${gene}.R --no-save
+rm addSpeciesToConsensusName_${gene}.R
